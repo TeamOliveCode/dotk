@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && vite build",
     "dev": "tsup --watch",
     "build:client": "vite build",
     "dev:client": "vite"
