@@ -19,6 +19,25 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
+      - name: Sync version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Syncing version to $VERSION"
+          node -e "
+            const fs = require('fs');
+            const files = [
+              'package.json',
+              'packages/core/package.json',
+              'packages/cli/package.json',
+              'packages/web/package.json',
+            ];
+            for (const f of files) {
+              const pkg = JSON.parse(fs.readFileSync(f, 'utf-8'));
+              pkg.version = '${VERSION}';
+              fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
+            }
+          "
+
       - name: Install & Build
         run: |
           pnpm install --frozen-lockfile
