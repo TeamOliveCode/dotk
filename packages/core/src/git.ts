@@ -254,7 +254,8 @@ export async function initialPush(cwd: string): Promise<void> {
   const git = simpleGit(cwd);
   await git.add(".");
   await git.commit("dotk: initial vault setup");
-  await git.push(["-u", "origin", "main"]);
+  const branch = (await git.branchLocal()).current;
+  await git.push(["-u", "origin", branch]);
 }
 
 /** Format VaultChanges into a shareable summary message */
