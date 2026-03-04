@@ -2,11 +2,11 @@
 set -e
 
 # dotk installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/olivecode/dotk/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/TeamOliveCode/dotk/main/install.sh | sh
 
 INSTALL_DIR="${DOTK_INSTALL_DIR:-$HOME/.dotk}"
 BIN_DIR="$INSTALL_DIR/bin"
-REPO="olivecode/dotk"
+REPO="TeamOliveCode/dotk"
 
 # Colors
 RED='\033[0;31m'
