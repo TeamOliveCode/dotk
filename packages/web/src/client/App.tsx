@@ -14,7 +14,7 @@ export function App() {
       .then(setSetupStatus)
       .catch(() => {
         // If setup endpoint fails, assume vault is initialized (backwards compat)
-        setSetupStatus({ vault_initialized: true, gh: { authenticated: false, username: null } });
+        setSetupStatus({ vault_initialized: true, vault_exists: true, has_remote: true, gh: { authenticated: false, username: null } });
       })
       .finally(() => setCheckingSetup(false));
   }, []);
@@ -32,6 +32,7 @@ export function App() {
       <SetupWizard
         ghAuthenticated={setupStatus.gh.authenticated}
         ghUsername={setupStatus.gh.username}
+        vaultExists={setupStatus.vault_exists}
         onComplete={() => {
           setSetupStatus({ ...setupStatus, vault_initialized: true });
         }}

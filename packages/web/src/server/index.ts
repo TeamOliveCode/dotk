@@ -78,10 +78,27 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
   const setup = new Hono();
 
   setup.get("/status", async (c) => {
-    const vaultInitialized = existsSync(configPath);
+    const vaultExists = existsSync(configPath);
     const ghStatus = await getGhAuthStatus();
+
+    // Check if git remote is configured
+    let hasRemote = false;
+    if (vaultExists) {
+      try {
+        const { execFile: ef } = await import("node:child_process");
+        const { promisify: p } = await import("node:util");
+        const exec = p(ef);
+        const { stdout } = await exec("git", ["-C", vaultPath, "remote", "get-url", "origin"], { timeout: 3000 });
+        hasRemote = !!stdout.trim();
+      } catch {
+        // No remote configured
+      }
+    }
+
     return c.json({
-      vault_initialized: vaultInitialized,
+      vault_initialized: vaultExists && hasRemote,
+      vault_exists: vaultExists,
+      has_remote: hasRemote,
       gh: ghStatus,
     });
   });

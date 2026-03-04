@@ -30,6 +30,8 @@ export interface VaultConfig {
 
 export interface SetupStatus {
   vault_initialized: boolean;
+  vault_exists: boolean;
+  has_remote: boolean;
   gh: { authenticated: boolean; username: string | null };
 }
 

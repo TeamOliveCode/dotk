@@ -6,10 +6,12 @@ type Step = "auth" | "repos" | "init" | "done";
 interface Props {
   ghAuthenticated: boolean;
   ghUsername: string | null;
+  vaultExists: boolean;
   onComplete: () => void;
 }
 
-export function SetupWizard({ ghAuthenticated, ghUsername, onComplete }: Props) {
+export function SetupWizard({ ghAuthenticated, ghUsername, vaultExists, onComplete }: Props) {
+  // If vault exists but no remote, skip to auth (then repos)
   const [step, setStep] = useState<Step>("auth");
   const [authed, setAuthed] = useState(ghAuthenticated);
   const [username, setUsername] = useState(ghUsername);
