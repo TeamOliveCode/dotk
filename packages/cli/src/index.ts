@@ -16,7 +16,7 @@ const program = new Command();
 program
   .name("dotk")
   .description("Secure secret management backed by GitHub Private Repos")
-  .version("0.1.0");
+  .version(process.env.DOTK_VERSION || "0.0.0");
 
 program.addCommand(initCommand);
 program.addCommand(keygenCommand);

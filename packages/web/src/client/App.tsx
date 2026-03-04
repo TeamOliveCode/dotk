@@ -89,7 +89,7 @@ function Dashboard() {
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold tracking-tight">dotk</h1>
             <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
-              v0.1.0
+              v0.1.7
             </span>
           </div>
           <nav className="flex gap-1">

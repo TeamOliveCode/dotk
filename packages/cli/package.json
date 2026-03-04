@@ -1,6 +1,6 @@
 {
   "name": "@dotk/cli",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "type": "module",
   "bin": {
     "dotk": "./dist/index.cjs"
