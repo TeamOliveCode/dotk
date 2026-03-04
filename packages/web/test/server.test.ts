@@ -234,6 +234,26 @@ describe("secrets", () => {
   });
 });
 
+// ─── Sync ───
+
+describe("sync", () => {
+  it("returns sync status", async () => {
+    const res = await req("/api/sync-status");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("has_remote");
+    expect(body).toHaveProperty("last_error");
+  });
+
+  it("push fails gracefully without remote", async () => {
+    const res = await req("/api/push", { method: "POST" });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toBeDefined();
+  });
+});
+
 // ─── Members ───
 
 describe("GET /api/members", () => {

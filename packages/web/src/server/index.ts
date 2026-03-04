@@ -83,34 +83,37 @@ export function createApp(vaultPath: string, authToken: string, clientDirOverrid
     }
   }
 
-  /**
-   * Stage, commit, and push vault changes. Runs push in background
-   * so API responses are never blocked by slow/failing git operations.
-   */
-  function syncVault(message: string): void {
-    // Stage + commit synchronously (fast, local-only)
-    stageAndCommit(vaultPath, message)
-      .then(async () => {
-        const remoteUrl = await getRemoteUrl();
-        if (!remoteUrl) return;
+  /** Push to remote with token injection if needed */
+  async function authedPush(): Promise<void> {
+    const remoteUrl = await getRemoteUrl();
+    if (!remoteUrl) throw new Error("No remote configured");
 
-        // Inject PAT for GitHub HTTPS remotes without embedded credentials
-        const needsTokenInjection = ghToken && remoteUrl.startsWith("https://github.com/") && !remoteUrl.includes("@");
-        if (needsTokenInjection) {
-          const repoPath = remoteUrl.replace("https://github.com/", "");
-          const authedUrl = `https://x-access-token:${ghToken}@github.com/${repoPath}`;
-          try {
-            await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", authedUrl]);
-            await pushWithTimeout(vaultPath);
-          } finally {
-            await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", remoteUrl]).catch(() => {});
-          }
-        } else {
-          await pushWithTimeout(vaultPath);
-        }
-      })
-      .catch(() => {
-        // Push failed — changes are committed locally, user can push manually
+    const needsTokenInjection = ghToken && remoteUrl.startsWith("https://github.com/") && !remoteUrl.includes("@");
+    if (needsTokenInjection) {
+      const repoPath = remoteUrl.replace("https://github.com/", "");
+      const authedUrl = `https://x-access-token:${ghToken}@github.com/${repoPath}`;
+      try {
+        await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", authedUrl]);
+        await pushWithTimeout(vaultPath);
+      } finally {
+        await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", remoteUrl]).catch(() => {});
+      }
+    } else {
+      await pushWithTimeout(vaultPath);
+    }
+  }
+
+  /** Last sync error (for status reporting) */
+  let lastSyncError: string | null = null;
+
+  /** Stage, commit, and push vault changes in background */
+  function syncVault(message: string): void {
+    stageAndCommit(vaultPath, message)
+      .then(() => authedPush())
+      .then(() => { lastSyncError = null; })
+      .catch((err) => {
+        lastSyncError = err?.message || "Push failed";
+        console.error(`[dotk] sync failed: ${lastSyncError}`);
       });
   }
 
@@ -480,6 +483,32 @@ export function createApp(vaultPath: string, authToken: string, clientDirOverrid
         ...m,
       }))
     );
+  });
+
+  api.get("/sync-status", async (c) => {
+    const remoteUrl = await getRemoteUrl();
+    return c.json({
+      has_remote: !!remoteUrl,
+      last_error: lastSyncError,
+    });
+  });
+
+  api.post("/push", async (c) => {
+    try {
+      await stageAndCommit(vaultPath, "dotk: sync from web UI");
+    } catch {
+      // Nothing to commit — that's fine, still try to push
+    }
+
+    try {
+      await authedPush();
+      lastSyncError = null;
+      return c.json({ ok: true });
+    } catch (err: any) {
+      const message = err?.message || "Push failed";
+      lastSyncError = message;
+      return c.json({ ok: false, error: message }, 500);
+    }
   });
 
   app.route("/api", api);

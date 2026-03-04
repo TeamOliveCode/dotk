@@ -101,6 +101,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ environment }),
     }),
+  getSyncStatus: () =>
+    fetchJSON<{ has_remote: boolean; last_error: string | null }>("/sync-status"),
+  push: () =>
+    fetchJSON<{ ok: boolean; error?: string }>("/push", { method: "POST" }),
   getMembers: () => fetchJSON<MemberInfo[]>("/members"),
 
   // Setup APIs

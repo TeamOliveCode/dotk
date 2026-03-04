@@ -50,6 +50,8 @@ function Dashboard() {
   const [secrets, setSecrets] = useState<SecretEntry[]>([]);
   const [tab, setTab] = useState<Tab>("secrets");
   const [loading, setLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<{ has_remote: boolean; last_error: string | null }>({ has_remote: false, last_error: null });
+  const [pushing, setPushing] = useState(false);
 
   const refreshServices = () =>
     api.getServices().then((svcs) => {
@@ -74,6 +76,7 @@ function Dashboard() {
       setLoading(false);
     });
     api.getMembers().then(setMembers);
+    api.getSyncStatus().then(setSyncStatus).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -103,7 +106,7 @@ function Dashboard() {
               v0.1.7
             </span>
           </div>
-          <nav className="flex gap-1">
+          <nav className="flex gap-1 items-center">
             <button
               onClick={() => setTab("secrets")}
               className={`px-3 py-1.5 rounded text-sm transition-colors ${
@@ -124,6 +127,34 @@ function Dashboard() {
             >
               Members
             </button>
+            {syncStatus.has_remote && (
+              <div className="ml-3 pl-3 border-l border-zinc-800 flex items-center gap-2">
+                {syncStatus.last_error && (
+                  <span className="text-xs text-red-400 max-w-48 truncate" title={syncStatus.last_error}>
+                    Sync failed
+                  </span>
+                )}
+                <button
+                  onClick={async () => {
+                    setPushing(true);
+                    try {
+                      await api.push();
+                      setSyncStatus((s) => ({ ...s, last_error: null }));
+                    } catch (err: any) {
+                      const msg = err?.body?.error || err.message || "Push failed";
+                      setSyncStatus((s) => ({ ...s, last_error: msg }));
+                      alert(`Push failed: ${msg}`);
+                    } finally {
+                      setPushing(false);
+                    }
+                  }}
+                  disabled={pushing}
+                  className="px-2.5 py-1 text-xs border border-zinc-700 rounded text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 disabled:opacity-40 transition-colors"
+                >
+                  {pushing ? "Pushing..." : "Push"}
+                </button>
+              </div>
+            )}
           </nav>
         </div>
       </header>
