@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
 import {
   readConfig,
+  writeConfig,
+  addService,
   readEncryptedEnv,
   writeEncryptedEnv,
   loadPrivateKey,
@@ -274,6 +276,57 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
         ...svc,
       }))
     );
+  });
+
+  api.post("/services", async (c) => {
+    const { name, description, environments } = await c.req.json<{
+      name: string;
+      description?: string;
+      environments?: string[];
+    }>();
+    if (!name || !name.trim()) {
+      return c.json({ error: "Service name is required" }, 400);
+    }
+    try { safeName(name); } catch { return c.json({ error: "Invalid service name" }, 400); }
+
+    const config = await readConfig(configPath);
+    if (config.services[name]) {
+      return c.json({ error: "Service already exists" }, 409);
+    }
+
+    const envs = environments?.length ? environments : ["development", "production"];
+    const updated = addService(config, name, {
+      description: description || "",
+      environments: envs,
+    });
+    await writeConfig(configPath, updated);
+
+    return c.json({ ok: true, service: { name, description: description || "", environments: envs } });
+  });
+
+  api.post("/services/:service/environments", async (c) => {
+    const { service } = c.req.param();
+    try { safeName(service); } catch { return c.json({ error: "Invalid service name" }, 400); }
+
+    const { environment } = await c.req.json<{ environment: string }>();
+    if (!environment || !environment.trim()) {
+      return c.json({ error: "Environment name is required" }, 400);
+    }
+    try { safeName(environment); } catch { return c.json({ error: "Invalid environment name" }, 400); }
+
+    const config = await readConfig(configPath);
+    const svc = config.services[service];
+    if (!svc) {
+      return c.json({ error: "Service not found" }, 404);
+    }
+    if (svc.environments.includes(environment)) {
+      return c.json({ error: "Environment already exists" }, 409);
+    }
+
+    svc.environments.push(environment);
+    await writeConfig(configPath, config);
+
+    return c.json({ ok: true });
   });
 
   api.get("/services/:service/:environment/secrets", async (c) => {

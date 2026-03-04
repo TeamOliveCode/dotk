@@ -91,6 +91,16 @@ export const api = {
     fetchJSON<{ ok: boolean }>(`/services/${service}/${env}/secrets/${key}`, {
       method: "DELETE",
     }),
+  createService: (name: string, description?: string, environments?: string[]) =>
+    fetchJSON<{ ok: boolean; service: ServiceInfo }>("/services", {
+      method: "POST",
+      body: JSON.stringify({ name, description, environments }),
+    }),
+  addEnvironment: (service: string, environment: string) =>
+    fetchJSON<{ ok: boolean }>(`/services/${service}/environments`, {
+      method: "POST",
+      body: JSON.stringify({ environment }),
+    }),
   getMembers: () => fetchJSON<MemberInfo[]>("/members"),
 
   // Setup APIs

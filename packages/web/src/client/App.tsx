@@ -51,6 +51,17 @@ function Dashboard() {
   const [tab, setTab] = useState<Tab>("secrets");
   const [loading, setLoading] = useState(true);
 
+  const refreshServices = () =>
+    api.getServices().then((svcs) => {
+      setServices(svcs);
+      if (svcs.length > 0 && !svcs.find((s) => s.name === selectedService)) {
+        setSelectedService(svcs[0].name);
+        if (svcs[0].environments.length > 0) {
+          setSelectedEnv(svcs[0].environments[0]);
+        }
+      }
+    });
+
   useEffect(() => {
     api.getServices().then((svcs) => {
       setServices(svcs);
@@ -138,6 +149,17 @@ function Dashboard() {
                 api.getSecrets(selectedService, selectedEnv).then(setSecrets);
               }
             }}
+            onServiceCreated={(name, env) => {
+              refreshServices().then(() => {
+                setSelectedService(name);
+                setSelectedEnv(env);
+              });
+            }}
+            onEnvironmentAdded={(env) => {
+              refreshServices().then(() => {
+                setSelectedEnv(env);
+              });
+            }}
           />
         ) : (
           <MembersView members={members} />
@@ -156,6 +178,8 @@ function SecretsView({
   onSelectService,
   onSelectEnv,
   onRefresh,
+  onServiceCreated,
+  onEnvironmentAdded,
 }: {
   services: ServiceInfo[];
   selectedService: string;
@@ -165,11 +189,20 @@ function SecretsView({
   onSelectService: (s: string) => void;
   onSelectEnv: (e: string) => void;
   onRefresh: () => void;
+  onServiceCreated: (name: string, env: string) => void;
+  onEnvironmentAdded: (env: string) => void;
 }) {
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+
+  // Add service/environment state
+  const [showAddService, setShowAddService] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServiceDesc, setNewServiceDesc] = useState("");
+  const [showAddEnv, setShowAddEnv] = useState(false);
+  const [newEnvName, setNewEnvName] = useState("");
 
   const handleAdd = async () => {
     if (!newKey.trim() || !selectedService || !selectedEnv) return;
@@ -196,10 +229,36 @@ function SecretsView({
     });
   };
 
+  const handleAddService = async () => {
+    if (!newServiceName.trim()) return;
+    try {
+      const res = await api.createService(newServiceName.trim(), newServiceDesc.trim() || undefined);
+      setNewServiceName("");
+      setNewServiceDesc("");
+      setShowAddService(false);
+      onServiceCreated(res.service.name, res.service.environments[0]);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleAddEnv = async () => {
+    if (!newEnvName.trim() || !selectedService) return;
+    try {
+      await api.addEnvironment(selectedService, newEnvName.trim());
+      const env = newEnvName.trim();
+      setNewEnvName("");
+      setShowAddEnv(false);
+      onEnvironmentAdded(env);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Service & Environment selector */}
-      <div className="flex gap-4">
+      <div className="flex gap-4 items-end">
         <div>
           <label className="block text-xs text-zinc-500 mb-1">Service</label>
           <select
@@ -230,7 +289,102 @@ function SecretsView({
             ))}
           </select>
         </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setShowAddService(!showAddService); setShowAddEnv(false); }}
+            className="px-2.5 py-1.5 text-xs border border-zinc-700 rounded text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+          >
+            + Service
+          </button>
+          {selectedService && (
+            <button
+              onClick={() => { setShowAddEnv(!showAddEnv); setShowAddService(false); }}
+              className="px-2.5 py-1.5 text-xs border border-zinc-700 rounded text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+            >
+              + Environment
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Add service form */}
+      {showAddService && (
+        <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900/50 space-y-3">
+          <h3 className="text-sm font-medium text-zinc-300">New Service</h3>
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="block text-xs text-zinc-500 mb-1">Name</label>
+              <input
+                type="text"
+                value={newServiceName}
+                onChange={(e) => setNewServiceName(e.target.value)}
+                placeholder="api-server"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs text-zinc-500 mb-1">Description (optional)</label>
+              <input
+                type="text"
+                value={newServiceDesc}
+                onChange={(e) => setNewServiceDesc(e.target.value)}
+                placeholder="Backend API service"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+            <button
+              onClick={handleAddService}
+              disabled={!newServiceName.trim()}
+              className="px-4 py-1.5 bg-zinc-100 text-zinc-900 rounded text-sm font-medium hover:bg-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Create
+            </button>
+            <button
+              onClick={() => setShowAddService(false)}
+              className="px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="text-xs text-zinc-600">
+            Default environments: development, production
+          </p>
+        </div>
+      )}
+
+      {/* Add environment form */}
+      {showAddEnv && (
+        <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900/50 space-y-3">
+          <h3 className="text-sm font-medium text-zinc-300">
+            Add Environment to <span className="font-mono text-zinc-100">{selectedService}</span>
+          </h3>
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="block text-xs text-zinc-500 mb-1">Environment Name</label>
+              <input
+                type="text"
+                value={newEnvName}
+                onChange={(e) => setNewEnvName(e.target.value)}
+                placeholder="staging"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+            <button
+              onClick={handleAddEnv}
+              disabled={!newEnvName.trim()}
+              className="px-4 py-1.5 bg-zinc-100 text-zinc-900 rounded text-sm font-medium hover:bg-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Add
+            </button>
+            <button
+              onClick={() => setShowAddEnv(false)}
+              className="px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Secrets table */}
       <div className="border border-zinc-800 rounded-lg overflow-hidden">
