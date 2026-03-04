@@ -64,39 +64,54 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
     }
   }
 
+  // Prevent git from prompting for credentials (would hang the server)
+  process.env.GIT_TERMINAL_PROMPT = "0";
+
   // Try to acquire gh CLI token on startup for push auth
   if (!ghToken) {
     getGhToken().then((t) => { if (t) ghToken = t; }).catch(() => {});
   }
 
-  /** Stage, commit, and push vault changes. Injects PAT for GitHub HTTPS remotes. */
-  async function syncVault(message: string): Promise<void> {
-    try {
-      await stageAndCommit(vaultPath, message);
-    } catch {
-      // Nothing to commit
-      return;
+  /** Push with timeout to prevent hanging */
+  async function pushWithTimeout(cwd: string, timeoutMs = 15_000): Promise<void> {
+    const result = await Promise.race([
+      pushToRemote(cwd).then(() => "ok" as const),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), timeoutMs)),
+    ]);
+    if (result === "timeout") {
+      throw new Error("Push timed out");
     }
+  }
 
-    const remoteUrl = await getRemoteUrl();
-    if (!remoteUrl) return;
+  /**
+   * Stage, commit, and push vault changes. Runs push in background
+   * so API responses are never blocked by slow/failing git operations.
+   */
+  function syncVault(message: string): void {
+    // Stage + commit synchronously (fast, local-only)
+    stageAndCommit(vaultPath, message)
+      .then(async () => {
+        const remoteUrl = await getRemoteUrl();
+        if (!remoteUrl) return;
 
-    // If we have a PAT and remote is GitHub HTTPS, temporarily inject token
-    const needsTokenInjection = ghToken && remoteUrl.startsWith("https://github.com/") && !remoteUrl.includes("@");
-    if (needsTokenInjection) {
-      const repoPath = remoteUrl.replace("https://github.com/", "");
-      const authedUrl = `https://x-access-token:${ghToken}@github.com/${repoPath}`;
-      try {
-        await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", authedUrl]);
-        await pushToRemote(vaultPath);
-      } finally {
-        // Always restore clean URL
-        await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", remoteUrl]).catch(() => {});
-      }
-    } else {
-      // Remote has credentials or uses SSH or gh credential helper
-      await pushToRemote(vaultPath);
-    }
+        // Inject PAT for GitHub HTTPS remotes without embedded credentials
+        const needsTokenInjection = ghToken && remoteUrl.startsWith("https://github.com/") && !remoteUrl.includes("@");
+        if (needsTokenInjection) {
+          const repoPath = remoteUrl.replace("https://github.com/", "");
+          const authedUrl = `https://x-access-token:${ghToken}@github.com/${repoPath}`;
+          try {
+            await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", authedUrl]);
+            await pushWithTimeout(vaultPath);
+          } finally {
+            await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", remoteUrl]).catch(() => {});
+          }
+        } else {
+          await pushWithTimeout(vaultPath);
+        }
+      })
+      .catch(() => {
+        // Push failed — changes are committed locally, user can push manually
+      });
   }
 
   // Auth middleware — require token for all API routes
@@ -350,7 +365,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
       environments: envs,
     });
     await writeConfig(configPath, updated);
-    await syncVault(`add service: ${name}`);
+    syncVault(`add service: ${name}`);
 
     return c.json({ ok: true, service: { name, description: description || "", environments: envs } });
   });
@@ -376,7 +391,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
 
     svc.environments.push(environment);
     await writeConfig(configPath, config);
-    await syncVault(`add environment: ${service}/${environment}`);
+    syncVault(`add environment: ${service}/${environment}`);
 
     return c.json({ ok: true });
   });
@@ -430,7 +445,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
 
     file = setEntry(file, key, value, publicKey);
     await writeEncryptedEnv(filePath, file);
-    await syncVault(`set ${service}/${environment}: ${key}`);
+    syncVault(`set ${service}/${environment}: ${key}`);
 
     return c.json({ ok: true });
   });
@@ -452,7 +467,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
     const file = await readEncryptedEnv(filePath);
     const entries = file.entries.filter((e) => e.key !== key);
     await writeEncryptedEnv(filePath, { ...file, entries });
-    await syncVault(`delete ${service}/${environment}: ${key}`);
+    syncVault(`delete ${service}/${environment}: ${key}`);
 
     return c.json({ ok: true });
   });
