@@ -66,40 +66,47 @@ export function createApp(vaultPath: string, authToken: string, clientDirOverrid
 
   // Prevent git from prompting for credentials (would hang the server)
   process.env.GIT_TERMINAL_PROMPT = "0";
+  process.env.GIT_ASKPASS = "";
+  process.env.GCM_INTERACTIVE = "never";
 
-  // Try to acquire gh CLI token on startup for push auth
-  if (!ghToken) {
-    getGhToken().then((t) => { if (t) ghToken = t; }).catch(() => {});
-  }
-
-  /** Push with timeout to prevent hanging */
-  async function pushWithTimeout(cwd: string, timeoutMs = 15_000): Promise<void> {
-    const result = await Promise.race([
-      pushToRemote(cwd).then(() => "ok" as const),
-      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), timeoutMs)),
-    ]);
-    if (result === "timeout") {
-      throw new Error("Push timed out");
-    }
-  }
+  // Try to acquire gh CLI token on startup for push auth (await it)
+  const ghTokenReady = (async () => {
+    if (ghToken) return;
+    try {
+      const t = await getGhToken();
+      if (t) ghToken = t;
+    } catch {}
+  })();
 
   /** Push to remote with token injection if needed */
   async function authedPush(): Promise<void> {
+    // Ensure gh token probe has completed
+    await ghTokenReady;
+
     const remoteUrl = await getRemoteUrl();
     if (!remoteUrl) throw new Error("No remote configured");
 
-    const needsTokenInjection = ghToken && remoteUrl.startsWith("https://github.com/") && !remoteUrl.includes("@");
-    if (needsTokenInjection) {
+    const isGithubHttps = remoteUrl.startsWith("https://github.com/");
+
+    // For GitHub HTTPS without embedded credentials, we MUST have a token
+    if (isGithubHttps && !remoteUrl.includes("@") && !ghToken) {
+      throw new Error(
+        "No GitHub token available. Authenticate with 'gh auth login' or provide a PAT through the setup wizard."
+      );
+    }
+
+    if (isGithubHttps && ghToken && !remoteUrl.includes("@")) {
       const repoPath = remoteUrl.replace("https://github.com/", "");
       const authedUrl = `https://x-access-token:${ghToken}@github.com/${repoPath}`;
       try {
         await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", authedUrl]);
-        await pushWithTimeout(vaultPath);
+        await pushToRemote(vaultPath);
       } finally {
         await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", remoteUrl]).catch(() => {});
       }
     } else {
-      await pushWithTimeout(vaultPath);
+      // SSH or remote with embedded credentials
+      await pushToRemote(vaultPath);
     }
   }
 
