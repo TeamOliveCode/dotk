@@ -9,6 +9,7 @@ import { pullCommand } from "./commands/pull.js";
 import { diffCommand } from "./commands/diff.js";
 import { exportCommand } from "./commands/export.js";
 import { uiCommand } from "./commands/ui.js";
+import { remoteCommand } from "./commands/remote.js";
 import { updateCommand } from "./commands/update.js";
 
 const program = new Command();
@@ -28,6 +29,7 @@ program.addCommand(pullCommand);
 program.addCommand(diffCommand);
 program.addCommand(exportCommand);
 program.addCommand(uiCommand);
+program.addCommand(remoteCommand);
 program.addCommand(updateCommand);
 
 program.parse();
