@@ -24,8 +24,13 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm bundle
 
+      - name: Package client assets
+        run: tar czf dist/client.tar.gz -C dist client
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/dotk
+          files: |
+            dist/dotk
+            dist/client.tar.gz
           generate_release_notes: true
