@@ -100,13 +100,19 @@ export function createApp(vaultPath: string, authToken: string, clientDirOverrid
       const authedUrl = `https://x-access-token:${ghToken}@github.com/${repoPath}`;
       try {
         await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", authedUrl]);
-        await pushToRemote(vaultPath);
+        await Promise.race([
+          pushToRemote(vaultPath),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Push timed out (15s)")), 15_000)),
+        ]);
       } finally {
         await execAsync("git", ["-C", vaultPath, "remote", "set-url", "origin", remoteUrl]).catch(() => {});
       }
     } else {
       // SSH or remote with embedded credentials
-      await pushToRemote(vaultPath);
+      await Promise.race([
+          pushToRemote(vaultPath),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Push timed out (15s)")), 15_000)),
+        ]);
     }
   }
 
