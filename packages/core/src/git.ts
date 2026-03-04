@@ -206,11 +206,12 @@ export async function stageAndCommit(
   await git.commit(message);
 }
 
-/** Push to remote */
+/** Push to remote (auto-sets upstream if not configured) */
 export async function pushToRemote(cwd: string): Promise<void> {
   const simpleGit = await loadGit();
   const git = simpleGit(cwd);
-  await git.push();
+  const branch = (await git.branchLocal()).current;
+  await git.push(["-u", "origin", branch]);
 }
 
 /** Stage, commit, and push changes */
