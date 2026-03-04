@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { api, type GithubRepo, type GithubOrg } from "./api.js";
 
-type Step = "auth" | "repos" | "init" | "done";
+type Step = "mode" | "auth" | "repos" | "init" | "done";
 
 interface Props {
   ghAuthenticated: boolean;
   ghUsername: string | null;
-  vaultExists: boolean;
   onComplete: () => void;
 }
 
-export function SetupWizard({ ghAuthenticated, ghUsername, vaultExists, onComplete }: Props) {
-  // If vault exists but no remote, skip to auth (then repos)
-  const [step, setStep] = useState<Step>("auth");
+export function SetupWizard({ ghAuthenticated, ghUsername, onComplete }: Props) {
+  const [step, setStep] = useState<Step>("mode");
   const [authed, setAuthed] = useState(ghAuthenticated);
   const [username, setUsername] = useState(ghUsername);
 
@@ -26,26 +24,46 @@ export function SetupWizard({ ghAuthenticated, ghUsername, vaultExists, onComple
         </div>
 
         {/* Step indicator */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          {(["auth", "repos", "init", "done"] as Step[]).map((s, i) => (
-            <React.Fragment key={s}>
-              {i > 0 && <div className="w-8 h-px bg-zinc-800" />}
-              <div
-                className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                  s === step
-                    ? "bg-zinc-100"
-                    : (["auth", "repos", "init", "done"].indexOf(s) <
-                        ["auth", "repos", "init", "done"].indexOf(step))
-                      ? "bg-zinc-500"
-                      : "bg-zinc-800"
-                }`}
-              />
-            </React.Fragment>
-          ))}
-        </div>
+        {step !== "mode" && (
+          <div className="flex items-center justify-center gap-2 mb-8">
+            {(["auth", "repos", "init", "done"] as Step[]).map((s, i) => {
+              if (s === "mode") return null;
+              return (
+                <React.Fragment key={s}>
+                  {i > 1 && <div className="w-8 h-px bg-zinc-800" />}
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                      s === step
+                        ? "bg-zinc-100"
+                        : (["auth", "repos", "init", "done"].indexOf(s) <
+                            ["auth", "repos", "init", "done"].indexOf(step))
+                          ? "bg-zinc-500"
+                          : "bg-zinc-800"
+                    }`}
+                  />
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
 
         {/* Steps */}
         <div className="border border-zinc-800 rounded-lg p-6 bg-zinc-900/30">
+          {step === "mode" && (
+            <ModeStep
+              onGithub={() => setStep("auth")}
+              onLocal={() => {
+                // Init vault locally without remote
+                api.initVault("").then((res) => {
+                  (window as any).__dotk_public_key = res.publicKey;
+                  setStep("done");
+                }).catch(() => {
+                  // Vault may already exist locally
+                  onComplete();
+                });
+              }}
+            />
+          )}
           {step === "auth" && (
             <AuthStep
               authed={authed}
@@ -61,7 +79,6 @@ export function SetupWizard({ ghAuthenticated, ghUsername, vaultExists, onComple
             <RepoStep
               onSelect={(repoUrl) => {
                 setStep("init");
-                // Pass repoUrl via a ref-like approach
                 (window as any).__dotk_repo_url = repoUrl;
               }}
               onBack={() => setStep("auth")}
@@ -84,6 +101,46 @@ export function SetupWizard({ ghAuthenticated, ghUsername, vaultExists, onComple
             />
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 0: Mode Selection ───
+
+function ModeStep({
+  onGithub,
+  onLocal,
+}: {
+  onGithub: () => void;
+  onLocal: () => void;
+}) {
+  return (
+    <div>
+      <h2 className="text-lg font-semibold mb-1">Create Vault</h2>
+      <p className="text-zinc-400 text-sm mb-6">
+        Choose how to store your encrypted secrets.
+      </p>
+
+      <div className="space-y-3">
+        <button
+          onClick={onGithub}
+          className="w-full text-left p-4 rounded border border-zinc-700 hover:border-zinc-500 transition-colors"
+        >
+          <p className="text-sm font-medium">Connect to GitHub</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            Sync your vault with a private GitHub repo for team collaboration and backup.
+          </p>
+        </button>
+        <button
+          onClick={onLocal}
+          className="w-full text-left p-4 rounded border border-zinc-800 hover:border-zinc-600 transition-colors"
+        >
+          <p className="text-sm font-medium text-zinc-300">Use locally</p>
+          <p className="text-xs text-zinc-600 mt-1">
+            Store secrets on this machine only. You can connect a remote later.
+          </p>
+        </button>
       </div>
     </div>
   );

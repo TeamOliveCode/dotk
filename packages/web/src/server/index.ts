@@ -96,8 +96,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
     }
 
     return c.json({
-      vault_initialized: vaultExists && hasRemote,
-      vault_exists: vaultExists,
+      vault_initialized: vaultExists,
       has_remote: hasRemote,
       gh: ghStatus,
     });
@@ -182,6 +181,21 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
 
   setup.post("/init", async (c) => {
     const { repoUrl } = await c.req.json<{ repoUrl: string }>();
+
+    // Local-only mode: no remote URL
+    if (!repoUrl) {
+      try {
+        const alreadyInitialized = existsSync(configPath);
+        if (alreadyInitialized) {
+          const publicKey = await loadPublicKey(vaultPath);
+          return c.json({ ok: true, publicKey });
+        }
+        const result = await initVault(vaultPath);
+        return c.json({ ok: true, publicKey: result.publicKey });
+      } catch (err: any) {
+        return c.json({ error: err.message }, 500);
+      }
+    }
 
     // If we have a PAT token and URL is HTTPS, inject token for push
     let pushUrl = repoUrl;
