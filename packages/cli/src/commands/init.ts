@@ -1,5 +1,14 @@
 import { Command } from "commander";
-import { cloneVault, saveKeyPair, initVault } from "@dotk/core";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import {
+  cloneVault,
+  saveKeyPair,
+  initVault,
+  addRemote,
+  initialPush,
+  loadPublicKey,
+} from "@dotk/core";
 import { resolveVaultPath, success, fatal, info } from "../utils.js";
 
 export const initCommand = new Command("init")
@@ -24,14 +33,47 @@ export const initCommand = new Command("init")
       return;
     }
 
-    // Mode 2 & 3: Create new vault
+    const alreadyInitialized = existsSync(join(vaultPath, "dotk.toml"));
+
+    // Already initialized + --remote → just connect remote and push
+    if (alreadyInitialized && opts.remote) {
+      info("Vault already initialized. Connecting to remote...");
+      try {
+        await addRemote(vaultPath, "origin", opts.remote);
+        info(`Remote set to ${opts.remote}`);
+      } catch {
+        info("Remote 'origin' already exists, updating URL...");
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const exec = promisify(execFile);
+        await exec("git", ["-C", vaultPath, "remote", "set-url", "origin", opts.remote]);
+        info(`Remote updated to ${opts.remote}`);
+      }
+
+      try {
+        await initialPush(vaultPath);
+        success("Pushed to remote.");
+      } catch (err: any) {
+        info(`Push failed: ${err.message}`);
+        info("You can push manually with: git push -u origin main");
+      }
+
+      console.log();
+      info("Share with your team:");
+      console.log(`  dotk init --repo ${opts.remote}`);
+      return;
+    }
+
+    // Already initialized + no --remote → nothing to do
+    if (alreadyInitialized) {
+      fatal("Vault already initialized in this directory.");
+    }
+
+    // New vault
     try {
       const result = await initVault(vaultPath, opts.remote);
       info(`Public key: ${result.publicKey.slice(0, 16)}...`);
     } catch (err: any) {
-      if (err.message.includes("already initialized")) {
-        fatal(err.message);
-      }
       // Remote push may fail — vault is still created locally
       if (opts.remote) {
         info(`Remote configured but push failed: ${err.message}`);
@@ -53,9 +95,6 @@ export const initCommand = new Command("init")
       info("Next steps:");
       console.log("  1. Create a private repo on GitHub");
       console.log("  2. Connect it:");
-      console.log(`     git -C ${vaultPath} remote add origin <repo-url>`);
-      console.log(`     git -C ${vaultPath} add . && git -C ${vaultPath} commit -m "init" && git -C ${vaultPath} push -u origin main`);
-      console.log("  Or re-run with --remote:");
       console.log(`     dotk init --remote git@github.com:your-org/secrets.git`);
     } else {
       info("Share with your team:");

@@ -16,6 +16,8 @@ import {
   listGithubOrgs,
   createGithubRepo,
   initVault,
+  addRemote,
+  initialPush,
 } from "@dotk/core";
 import type { EncryptedEnvFile } from "@dotk/core";
 import { join, dirname } from "node:path";
@@ -171,7 +173,26 @@ function createApp(vaultPath: string, authToken: string) {
     }
 
     try {
-      const result = await initVault(vaultPath, pushUrl);
+      const alreadyInitialized = existsSync(configPath);
+      let publicKey: string;
+
+      if (alreadyInitialized) {
+        // Vault exists — just connect remote and push
+        try {
+          await addRemote(vaultPath, "origin", pushUrl);
+        } catch {
+          // Remote already exists, update URL
+          const { execFile } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          const exec = promisify(execFile);
+          await exec("git", ["-C", vaultPath, "remote", "set-url", "origin", pushUrl]);
+        }
+        await initialPush(vaultPath);
+        publicKey = await loadPublicKey(vaultPath);
+      } else {
+        const result = await initVault(vaultPath, pushUrl);
+        publicKey = result.publicKey;
+      }
 
       // Clean up token from remote URL after push
       if (pushUrl !== repoUrl) {
@@ -188,7 +209,7 @@ function createApp(vaultPath: string, authToken: string) {
       // Clear ephemeral token
       ghToken = null;
 
-      return c.json({ ok: true, publicKey: result.publicKey });
+      return c.json({ ok: true, publicKey });
     } catch (err: any) {
       return c.json({ error: err.message }, 500);
     }
