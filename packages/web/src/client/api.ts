@@ -1,5 +1,8 @@
 const BASE = "/api";
 
+// Read auth token from URL query parameter
+const AUTH_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
+
 export interface ServiceInfo {
   name: string;
   description: string;
@@ -27,7 +30,10 @@ export interface VaultConfig {
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Dotk-Token": AUTH_TOKEN,
+    },
     ...init,
   });
   if (!res.ok) throw new Error(`API error: ${res.status}`);

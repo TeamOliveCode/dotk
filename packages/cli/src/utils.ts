@@ -2,6 +2,14 @@ import { resolve, join } from "node:path";
 import { existsSync } from "node:fs";
 import pc from "picocolors";
 
+/** Validate that a name segment is safe (no path traversal) */
+export function validateName(value: string, label: string): string {
+  if (!value || /[\/\\]/.test(value) || value === "." || value === ".." || value.includes("..")) {
+    fatal(`Invalid ${label}: "${value}"`);
+  }
+  return value;
+}
+
 /** Resolve the vault directory. Uses --vault option, DOTK_VAULT env var, or cwd */
 export function resolveVaultPath(optionVault?: string): string {
   if (optionVault) return resolve(optionVault);
@@ -15,6 +23,8 @@ export function envFilePath(
   service: string,
   environment: string
 ): string {
+  validateName(service, "service");
+  validateName(environment, "environment");
   return join(vaultPath, "services", service, `.env.${environment}.encrypted`);
 }
 

@@ -14,15 +14,51 @@ import type { EncryptedEnvFile } from "@dotk/core";
 import { join, dirname } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 
 interface ServerOptions {
   vaultPath: string;
   port: number;
 }
 
-function createApp(vaultPath: string) {
+/** Validate that a path segment is safe (no traversal) */
+function safeName(value: string): string {
+  if (!value || /[\/\\]/.test(value) || value === "." || value === ".." || value.includes("..")) {
+    throw new Error(`Invalid path segment: "${value}"`);
+  }
+  return value;
+}
+
+function createApp(vaultPath: string, authToken: string) {
   const app = new Hono();
   const configPath = join(vaultPath, "dotk.toml");
+
+  // Auth middleware — require token for all API routes
+  app.use("/api/*", async (c, next) => {
+    const token = c.req.header("X-Dotk-Token") || c.req.query("token");
+    if (token !== authToken) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    await next();
+  });
+
+  // CORS — only allow same-origin (127.0.0.1)
+  app.use("/api/*", async (c, next) => {
+    const origin = c.req.header("Origin");
+    if (origin) {
+      const url = new URL(origin);
+      if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
+        return c.json({ error: "Forbidden origin" }, 403);
+      }
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      c.header("Access-Control-Allow-Headers", "Content-Type, X-Dotk-Token");
+    }
+    if (c.req.method === "OPTIONS") {
+      return new Response(null, { status: 204 });
+    }
+    await next();
+  });
 
   // API routes
   const api = new Hono();
@@ -44,6 +80,7 @@ function createApp(vaultPath: string) {
 
   api.get("/services/:service/:environment/secrets", async (c) => {
     const { service, environment } = c.req.param();
+    try { safeName(service); safeName(environment); } catch { return c.json({ error: "Invalid parameters" }, 400); }
     const filePath = join(
       vaultPath,
       "services",
@@ -70,6 +107,7 @@ function createApp(vaultPath: string) {
 
   api.post("/services/:service/:environment/secrets", async (c) => {
     const { service, environment } = c.req.param();
+    try { safeName(service); safeName(environment); } catch { return c.json({ error: "Invalid parameters" }, 400); }
     const { key, value } = await c.req.json<{ key: string; value: string }>();
 
     const publicKey = await loadPublicKey(vaultPath);
@@ -95,6 +133,7 @@ function createApp(vaultPath: string) {
 
   api.delete("/services/:service/:environment/secrets/:key", async (c) => {
     const { service, environment, key } = c.req.param();
+    try { safeName(service); safeName(environment); } catch { return c.json({ error: "Invalid parameters" }, 400); }
     const filePath = join(
       vaultPath,
       "services",
@@ -162,12 +201,15 @@ function createApp(vaultPath: string) {
   return app;
 }
 
-export async function startServer(opts: ServerOptions): Promise<void> {
-  const app = createApp(opts.vaultPath);
+export async function startServer(opts: ServerOptions): Promise<{ token: string }> {
+  const token = randomBytes(32).toString("hex");
+  const app = createApp(opts.vaultPath, token);
 
   serve({
     fetch: app.fetch,
     hostname: "127.0.0.1",
     port: opts.port,
   });
+
+  return { token };
 }

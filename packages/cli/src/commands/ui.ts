@@ -14,9 +14,10 @@ export const uiCommand = new Command("ui")
 
     // Dynamic import to avoid loading web deps unless needed
     const { startServer } = await import("@dotk/web");
-    await startServer({ vaultPath, port });
+    const { token } = await startServer({ vaultPath, port });
 
+    const url = `http://127.0.0.1:${port}?token=${token}`;
     const open = (await import("open")).default;
-    await open(`http://127.0.0.1:${port}`);
-    success(`UI running at http://127.0.0.1:${port}`);
+    await open(url);
+    success(`UI running at ${url}`);
   });

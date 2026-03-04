@@ -29,9 +29,9 @@ export async function saveKeyPair(vaultPath: string): Promise<KeyPair> {
   const keyPair = generateKeyPair();
   const keysDir = join(vaultPath, KEYS_DIR);
 
-  await mkdir(keysDir, { recursive: true });
-  await writeFile(join(keysDir, PRIVATE_KEY_FILE), keyPair.privateKey + "\n", "utf-8");
-  await writeFile(join(keysDir, PUBLIC_KEY_FILE), keyPair.publicKey + "\n", "utf-8");
+  await mkdir(keysDir, { recursive: true, mode: 0o700 });
+  await writeFile(join(keysDir, PRIVATE_KEY_FILE), keyPair.privateKey + "\n", { encoding: "utf-8", mode: 0o600 });
+  await writeFile(join(keysDir, PUBLIC_KEY_FILE), keyPair.publicKey + "\n", { encoding: "utf-8", mode: 0o644 });
 
   return keyPair;
 }
