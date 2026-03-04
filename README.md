@@ -14,7 +14,7 @@ GitHub Private Repo를 저장소로 사용하는 시크릿 관리 도구.
 ## 설치
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/olivecode/dotk/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/TeamOliveCode/dotk/main/install.sh | sh
 ```
 
 Node.js 18+ 와 Git이 필요합니다.
