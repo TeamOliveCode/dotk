@@ -5,3 +5,5 @@ export * from "./config.js";
 export * from "./keyring.js";
 export * from "./git.js";
 export * from "./notify.js";
+export * from "./github.js";
+export * from "./setup.js";

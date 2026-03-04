@@ -9,6 +9,13 @@ import {
   loadPublicKey,
   decryptAll,
   setEntry,
+  getGhAuthStatus,
+  getGhToken,
+  validateGithubToken,
+  listGithubRepos,
+  listGithubOrgs,
+  createGithubRepo,
+  initVault,
 } from "@dotk/core";
 import type { EncryptedEnvFile } from "@dotk/core";
 import { join, dirname } from "node:path";
@@ -32,6 +39,9 @@ function safeName(value: string): string {
 function createApp(vaultPath: string, authToken: string) {
   const app = new Hono();
   const configPath = join(vaultPath, "dotk.toml");
+
+  // Ephemeral GitHub token — memory only, never persisted
+  let ghToken: string | null = null;
 
   // Auth middleware — require token for all API routes
   app.use("/api/*", async (c, next) => {
@@ -60,8 +70,143 @@ function createApp(vaultPath: string, authToken: string) {
     await next();
   });
 
-  // API routes
+  // ─── Setup routes (always available) ───
+
+  const setup = new Hono();
+
+  setup.get("/status", async (c) => {
+    const vaultInitialized = existsSync(configPath);
+    const ghStatus = await getGhAuthStatus();
+    return c.json({
+      vault_initialized: vaultInitialized,
+      gh: ghStatus,
+    });
+  });
+
+  setup.post("/gh/token", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { pat?: string };
+    const pat = body.pat;
+
+    if (pat) {
+      // Validate PAT
+      const result = await validateGithubToken(pat);
+      if (!result.valid) {
+        return c.json({ error: "Invalid token" }, 401);
+      }
+      const hasRepoScope =
+        result.scopes.includes("repo") || result.scopes.length === 0; // Fine-grained tokens don't list scopes
+      if (!hasRepoScope && result.scopes.length > 0) {
+        return c.json(
+          {
+            error: "Token missing 'repo' scope",
+            scopes: result.scopes,
+          },
+          403
+        );
+      }
+      ghToken = pat;
+      return c.json({
+        authenticated: true,
+        username: result.user!.login,
+        source: "pat",
+      });
+    }
+
+    // Try gh CLI token
+    const cliToken = await getGhToken();
+    if (cliToken) {
+      const result = await validateGithubToken(cliToken);
+      if (result.valid) {
+        ghToken = cliToken;
+        return c.json({
+          authenticated: true,
+          username: result.user!.login,
+          source: "gh_cli",
+        });
+      }
+    }
+
+    return c.json({ error: "No valid GitHub token found" }, 401);
+  });
+
+  setup.get("/gh/repos", async (c) => {
+    if (!ghToken) {
+      return c.json({ error: "Not authenticated with GitHub" }, 401);
+    }
+    const type = (c.req.query("type") as "user" | "org") || "user";
+    const org = c.req.query("org");
+    const repos = await listGithubRepos(ghToken, { type, org });
+    return c.json(repos);
+  });
+
+  setup.get("/gh/orgs", async (c) => {
+    if (!ghToken) {
+      return c.json({ error: "Not authenticated with GitHub" }, 401);
+    }
+    const orgs = await listGithubOrgs(ghToken);
+    return c.json(orgs);
+  });
+
+  setup.post("/gh/repos", async (c) => {
+    if (!ghToken) {
+      return c.json({ error: "Not authenticated with GitHub" }, 401);
+    }
+    const body = await c.req.json<{
+      name: string;
+      org?: string;
+      description?: string;
+    }>();
+    const repo = await createGithubRepo(ghToken, body);
+    return c.json(repo);
+  });
+
+  setup.post("/init", async (c) => {
+    const { repoUrl } = await c.req.json<{ repoUrl: string }>();
+
+    // If we have a PAT token and URL is HTTPS, inject token for push
+    let pushUrl = repoUrl;
+    if (ghToken && repoUrl.startsWith("https://github.com/")) {
+      const repoPath = repoUrl.replace("https://github.com/", "");
+      pushUrl = `https://x-access-token:${ghToken}@github.com/${repoPath}`;
+    }
+
+    try {
+      const result = await initVault(vaultPath, pushUrl);
+
+      // Clean up token from remote URL after push
+      if (pushUrl !== repoUrl) {
+        try {
+          const { execFile } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          const exec = promisify(execFile);
+          await exec("git", ["-C", vaultPath, "remote", "set-url", "origin", repoUrl]);
+        } catch {
+          // Non-critical — URL cleanup failed
+        }
+      }
+
+      // Clear ephemeral token
+      ghToken = null;
+
+      return c.json({ ok: true, publicKey: result.publicKey });
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  app.route("/api/setup", setup);
+
+  // ─── Vault-required routes ───
+
   const api = new Hono();
+
+  // Vault check middleware — existing routes require initialized vault
+  api.use("*", async (c, next) => {
+    if (!existsSync(configPath)) {
+      return c.json({ error: "Vault not initialized", setup_required: true }, 409);
+    }
+    await next();
+  });
 
   api.get("/config", async (c) => {
     const config = await readConfig(configPath);
@@ -165,8 +310,11 @@ function createApp(vaultPath: string, authToken: string) {
   app.route("/api", api);
 
   // Try to serve built client assets
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const clientDir = join(__dirname, "../client");
+  // Use import.meta.url in ESM, fall back to __filename for CJS (bundled CLI)
+  const currentDir = typeof __filename !== "undefined"
+    ? dirname(__filename)
+    : dirname(fileURLToPath(import.meta.url));
+  const clientDir = join(currentDir, "client");
 
   if (existsSync(join(clientDir, "index.html"))) {
     app.use("/*", serveStatic({ root: clientDir }));

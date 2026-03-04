@@ -1,16 +1,5 @@
 import { Command } from "commander";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { existsSync } from "node:fs";
-import {
-  createDefaultConfig,
-  writeConfig,
-  saveKeyPair,
-  initRepo,
-  cloneVault,
-  addRemote,
-  initialPush,
-} from "@dotk/core";
+import { cloneVault, saveKeyPair, initVault } from "@dotk/core";
 import { resolveVaultPath, success, fatal, info } from "../utils.js";
 
 export const initCommand = new Command("init")
@@ -36,41 +25,24 @@ export const initCommand = new Command("init")
     }
 
     // Mode 2 & 3: Create new vault
-    if (existsSync(join(vaultPath, "dotk.toml"))) {
-      fatal("Vault already initialized in this directory.");
-    }
-
-    // Scaffold vault structure
-    await mkdir(join(vaultPath, "services"), { recursive: true });
-    await mkdir(join(vaultPath, ".keys"), { recursive: true });
-
-    await writeFile(join(vaultPath, ".gitignore"), ".keys/\n", "utf-8");
-
-    const config = createDefaultConfig();
-    await writeConfig(join(vaultPath, "dotk.toml"), config);
-
-    const keyPair = await saveKeyPair(vaultPath);
-    info(`Public key: ${keyPair.publicKey.slice(0, 16)}...`);
-
-    // Init git repo
     try {
-      await initRepo(vaultPath);
-    } catch {
-      info("Skipping git init (already a repo or git unavailable).");
-    }
-
-    // Mode 2: Connect to remote repo
-    if (opts.remote) {
-      try {
-        await addRemote(vaultPath, "origin", opts.remote);
-        info(`Remote set to ${opts.remote}`);
-
-        await initialPush(vaultPath);
-        success("Initial commit pushed to remote.");
-      } catch (err: any) {
+      const result = await initVault(vaultPath, opts.remote);
+      info(`Public key: ${result.publicKey.slice(0, 16)}...`);
+    } catch (err: any) {
+      if (err.message.includes("already initialized")) {
+        fatal(err.message);
+      }
+      // Remote push may fail — vault is still created locally
+      if (opts.remote) {
         info(`Remote configured but push failed: ${err.message}`);
         info("You can push manually with: git push -u origin main");
+      } else {
+        throw err;
       }
+    }
+
+    if (opts.remote) {
+      success("Initial commit pushed to remote.");
     }
 
     success("Vault initialized at " + vaultPath);

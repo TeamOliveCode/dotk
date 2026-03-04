@@ -28,6 +28,35 @@ export interface VaultConfig {
   settings: { default_environment: string };
 }
 
+export interface SetupStatus {
+  vault_initialized: boolean;
+  gh: { authenticated: boolean; username: string | null };
+}
+
+export interface GhAuthResult {
+  authenticated: boolean;
+  username: string;
+  source: "gh_cli" | "pat";
+}
+
+export interface GithubRepo {
+  name: string;
+  full_name: string;
+  private: boolean;
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  description: string | null;
+  size: number;
+  default_branch: string;
+}
+
+export interface GithubOrg {
+  login: string;
+  avatar_url: string;
+  description: string | null;
+}
+
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
     headers: {
@@ -36,11 +65,18 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
     },
     ...init,
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error((body as any).error || `API error: ${res.status}`);
+    (err as any).status = res.status;
+    (err as any).body = body;
+    throw err;
+  }
   return res.json();
 }
 
 export const api = {
+  // Existing vault APIs
   getConfig: () => fetchJSON<VaultConfig>("/config"),
   getServices: () => fetchJSON<ServiceInfo[]>("/services"),
   getSecrets: (service: string, env: string) =>
@@ -55,4 +91,30 @@ export const api = {
       method: "DELETE",
     }),
   getMembers: () => fetchJSON<MemberInfo[]>("/members"),
+
+  // Setup APIs
+  getSetupStatus: () => fetchJSON<SetupStatus>("/setup/status"),
+  authenticateGh: (pat?: string) =>
+    fetchJSON<GhAuthResult>("/setup/gh/token", {
+      method: "POST",
+      body: JSON.stringify({ pat }),
+    }),
+  getGhRepos: (type?: "user" | "org", org?: string) => {
+    const params = new URLSearchParams();
+    if (type) params.set("type", type);
+    if (org) params.set("org", org);
+    const qs = params.toString();
+    return fetchJSON<GithubRepo[]>(`/setup/gh/repos${qs ? `?${qs}` : ""}`);
+  },
+  getGhOrgs: () => fetchJSON<GithubOrg[]>("/setup/gh/orgs"),
+  createGhRepo: (name: string, org?: string, description?: string) =>
+    fetchJSON<GithubRepo>("/setup/gh/repos", {
+      method: "POST",
+      body: JSON.stringify({ name, org, description }),
+    }),
+  initVault: (repoUrl: string) =>
+    fetchJSON<{ ok: boolean; publicKey: string }>("/setup/init", {
+      method: "POST",
+      body: JSON.stringify({ repoUrl }),
+    }),
 };

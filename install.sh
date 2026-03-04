@@ -31,9 +31,17 @@ info "Installing dotk..."
 mkdir -p "$BIN_DIR"
 RELEASE_URL="https://github.com/$REPO/releases/latest/download/dotk"
 
+CLIENT_DIR="$INSTALL_DIR/client"
+RELEASE_CLIENT_URL="https://github.com/$REPO/releases/latest/download/client.tar.gz"
+
 if curl -fsSL "$RELEASE_URL" -o "$BIN_DIR/dotk" 2>/dev/null; then
   chmod +x "$BIN_DIR/dotk"
-  success "Downloaded from release."
+  # Download web client assets
+  if curl -fsSL "$RELEASE_CLIENT_URL" 2>/dev/null | tar xz -C "$INSTALL_DIR" 2>/dev/null; then
+    success "Downloaded binary and web client from release."
+  else
+    success "Downloaded binary from release (web client not available)."
+  fi
 else
   # Fallback: clone and build from source
   info "Release not found, building from source..."
@@ -57,6 +65,11 @@ else
 
   cp dist/dotk "$BIN_DIR/dotk"
   chmod +x "$BIN_DIR/dotk"
+  # Copy web client assets next to bin dir
+  if [ -d "dist/client" ]; then
+    rm -rf "$CLIENT_DIR"
+    cp -r dist/client "$CLIENT_DIR"
+  fi
   success "Built from source."
 fi
 

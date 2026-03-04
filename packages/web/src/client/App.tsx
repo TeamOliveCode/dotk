@@ -1,9 +1,48 @@
 import React, { useState, useEffect } from "react";
-import { api, type ServiceInfo, type SecretEntry, type MemberInfo } from "./api.js";
+import { api, type ServiceInfo, type SecretEntry, type MemberInfo, type SetupStatus } from "./api.js";
+import { SetupWizard } from "./SetupWizard.js";
 
 type Tab = "secrets" | "members";
 
 export function App() {
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
+  const [checkingSetup, setCheckingSetup] = useState(true);
+
+  useEffect(() => {
+    api
+      .getSetupStatus()
+      .then(setSetupStatus)
+      .catch(() => {
+        // If setup endpoint fails, assume vault is initialized (backwards compat)
+        setSetupStatus({ vault_initialized: true, gh: { authenticated: false, username: null } });
+      })
+      .finally(() => setCheckingSetup(false));
+  }, []);
+
+  if (checkingSetup) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
+        <p className="text-zinc-400">Loading...</p>
+      </div>
+    );
+  }
+
+  if (setupStatus && !setupStatus.vault_initialized) {
+    return (
+      <SetupWizard
+        ghAuthenticated={setupStatus.gh.authenticated}
+        ghUsername={setupStatus.gh.username}
+        onComplete={() => {
+          setSetupStatus({ ...setupStatus, vault_initialized: true });
+        }}
+      />
+    );
+  }
+
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [members, setMembers] = useState<MemberInfo[]>([]);
   const [selectedService, setSelectedService] = useState<string>("");
