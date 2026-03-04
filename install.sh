@@ -34,9 +34,13 @@ RELEASE_URL="https://github.com/$REPO/releases/latest/download/dotk"
 CLIENT_DIR="$INSTALL_DIR/client"
 RELEASE_CLIENT_URL="https://github.com/$REPO/releases/latest/download/client.tar.gz"
 
+# Remove old binary to ensure clean update
+rm -f "$BIN_DIR/dotk"
+
 if curl -fsSL "$RELEASE_URL" -o "$BIN_DIR/dotk" 2>/dev/null; then
   chmod +x "$BIN_DIR/dotk"
   # Download web client assets
+  rm -rf "$CLIENT_DIR"
   if curl -fsSL "$RELEASE_CLIENT_URL" 2>/dev/null | tar xz -C "$INSTALL_DIR" 2>/dev/null; then
     success "Downloaded binary and web client from release."
   else
