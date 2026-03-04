@@ -20,6 +20,7 @@ import {
   initVault,
   addRemote,
   initialPush,
+  commitAndPush,
 } from "@dotk/core";
 import type { EncryptedEnvFile } from "@dotk/core";
 import { join, dirname } from "node:path";
@@ -39,6 +40,15 @@ function safeName(value: string): string {
     throw new Error(`Invalid path segment: "${value}"`);
   }
   return value;
+}
+
+/** Stage, commit, and push vault changes (no-op if no remote) */
+async function syncVault(vaultPath: string, message: string): Promise<void> {
+  try {
+    await commitAndPush(vaultPath, message);
+  } catch {
+    // No remote or push failed — ignore (local-only vault)
+  }
 }
 
 function createApp(vaultPath: string, authToken: string, clientDirOverride?: string) {
@@ -300,6 +310,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
       environments: envs,
     });
     await writeConfig(configPath, updated);
+    await syncVault(vaultPath, `add service: ${name}`);
 
     return c.json({ ok: true, service: { name, description: description || "", environments: envs } });
   });
@@ -325,6 +336,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
 
     svc.environments.push(environment);
     await writeConfig(configPath, config);
+    await syncVault(vaultPath, `add environment: ${service}/${environment}`);
 
     return c.json({ ok: true });
   });
@@ -378,6 +390,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
 
     file = setEntry(file, key, value, publicKey);
     await writeEncryptedEnv(filePath, file);
+    await syncVault(vaultPath, `set ${service}/${environment}: ${key}`);
 
     return c.json({ ok: true });
   });
@@ -399,6 +412,7 @@ function createApp(vaultPath: string, authToken: string, clientDirOverride?: str
     const file = await readEncryptedEnv(filePath);
     const entries = file.entries.filter((e) => e.key !== key);
     await writeEncryptedEnv(filePath, { ...file, entries });
+    await syncVault(vaultPath, `delete ${service}/${environment}: ${key}`);
 
     return c.json({ ok: true });
   });
