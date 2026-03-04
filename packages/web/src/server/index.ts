@@ -28,6 +28,7 @@ import { randomBytes } from "node:crypto";
 interface ServerOptions {
   vaultPath: string;
   port: number;
+  clientDir?: string;
 }
 
 /** Validate that a path segment is safe (no traversal) */
@@ -38,7 +39,7 @@ function safeName(value: string): string {
   return value;
 }
 
-function createApp(vaultPath: string, authToken: string) {
+function createApp(vaultPath: string, authToken: string, clientDirOverride?: string) {
   const app = new Hono();
   const configPath = join(vaultPath, "dotk.toml");
 
@@ -331,11 +332,20 @@ function createApp(vaultPath: string, authToken: string) {
   app.route("/api", api);
 
   // Try to serve built client assets
-  // Use import.meta.url in ESM, fall back to __filename for CJS (bundled CLI)
+  // Check multiple candidate paths for the client directory
+  const candidates = clientDirOverride ? [clientDirOverride] : [];
+  // Next to the entry script (installed binary: $HOME/.dotk/bin/dotk → ../client)
+  if (typeof process !== "undefined" && process.argv[1]) {
+    const binDir = dirname(process.argv[1]);
+    candidates.push(join(binDir, "client"), join(binDir, "../client"));
+  }
+  // Next to this module file (web package standalone)
   const currentDir = typeof __filename !== "undefined"
     ? dirname(__filename)
     : dirname(fileURLToPath(import.meta.url));
-  const clientDir = join(currentDir, "client");
+  candidates.push(join(currentDir, "client"), join(currentDir, "../client"));
+
+  const clientDir = candidates.find((d) => existsSync(join(d, "index.html"))) || join(currentDir, "client");
 
   if (existsSync(join(clientDir, "index.html"))) {
     app.use("/*", serveStatic({ root: clientDir }));
@@ -372,7 +382,7 @@ function createApp(vaultPath: string, authToken: string) {
 
 export async function startServer(opts: ServerOptions): Promise<{ token: string }> {
   const token = randomBytes(32).toString("hex");
-  const app = createApp(opts.vaultPath, token);
+  const app = createApp(opts.vaultPath, token, opts.clientDir);
 
   serve({
     fetch: app.fetch,
