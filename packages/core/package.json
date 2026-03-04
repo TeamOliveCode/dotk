@@ -1,0 +1,29 @@
+{
+  "name": "@dotk/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "eciesjs": "^0.4.0",
+    "simple-git": "^3.27.0",
+    "smol-toml": "^1.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "vitest": "^3.0.0",
+    "typescript": "^5.7.0"
+  }
+}
