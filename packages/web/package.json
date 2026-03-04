@@ -14,7 +14,8 @@
     "build": "tsup && vite build",
     "dev": "tsup --watch",
     "build:client": "vite build",
-    "dev:client": "vite"
+    "dev:client": "vite",
+    "test": "vitest run"
   },
   "dependencies": {
     "@dotk/core": "workspace:*",
@@ -22,6 +23,7 @@
     "@hono/node-server": "^1.14.0"
   },
   "devDependencies": {
+    "vitest": "^3.0.0",
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",

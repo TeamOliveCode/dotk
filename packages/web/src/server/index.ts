@@ -47,7 +47,7 @@ function safeName(value: string): string {
   return value;
 }
 
-function createApp(vaultPath: string, authToken: string, clientDirOverride?: string) {
+export function createApp(vaultPath: string, authToken: string, clientDirOverride?: string) {
   const app = new Hono();
   const configPath = join(vaultPath, "dotk.toml");
 
